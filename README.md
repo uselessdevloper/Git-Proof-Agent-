@@ -370,13 +370,40 @@ GEMINI_API_KEY=your_gemini_api_key_here
    pip install -r requirements.txt
    ```
 
-2. **Start the FastAPI server**:
+2. **Using the CLI (No Frontend Required)**:
+   You can run analysis, scan portfolios, and view system status directly from your terminal:
+
+   ```bash
+   # Set your GitHub token (or pass via --token / gh CLI / interactive prompt)
+   export GITHUB_TOKEN="ghp_your_github_token"
+
+   # 1. Analyze a specific repository contribution for a skill:
+   python cli.py analyze <owner/repo> <username> <skill>
+   # Example:
+   python cli.py analyze torvalds/linux torvalds c
+
+   # 2. Scan an entire developer portfolio:
+   python cli.py scan <username> --limit 15
+
+   # 3. Interactive CLI menu:
+   python cli.py interactive
+
+   # 4. Check memory & LLM status:
+   python cli.py status
+
+   # 5. Browse episodic lessons learned:
+   python cli.py lessons
+
+   # 6. Submit feedback on an analysis to train memory:
+   python cli.py feedback --id <analysis_id> --type accurate --notes "Verified manually"
+   ```
+
+3. **Running the Web App (Optional)**:
+   If you want to run the FastAPI web server & dashboard:
    ```bash
    uvicorn app:app --reload --port 8000
    ```
-
-3. **Open the Dashboard**:
-   Navigate to **`http://localhost:8000`** in your browser.
+   Then open `http://localhost:8000` in your browser.
    - Click **Connect GitHub** to authenticate.
    - Select a repository and enter a claimed skill (e.g., `python`, `typescript`, `rust`, `go`).
    - Click **Run GitProof Analysis** to inspect evidence.
