@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GitProof Agent v2.5 — Autonomous Developer Intelligence</title>
+<meta name="description" content="Verify GitHub skill claims and audit entire developer portfolios with AI-powered evidence analysis that learns from feedback." />
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+  :root {
+    --bg: #0a0e1a;
+    --panel: #111827;
+    --panel2: #1a2235;
+    --border: #1f2d45;
+    --border-soft: #263348;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #3b82f6;
+    --accent-glow: rgba(59,130,246,0.15);
+    --green: #10b981;
+    --green-bg: rgba(16,185,129,0.1);
+    --yellow: #f59e0b;
+    --yellow-bg: rgba(245,158,11,0.1);
+    --red: #ef4444;
+    --red-bg: rgba(239,68,68,0.1);
+    --purple: #8b5cf6;
+    --purple-bg: rgba(139,92,246,0.1);
+    --teal: #06b6d4;
+    --teal-bg: rgba(6,182,212,0.1);
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* Background grid pattern */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(59,130,246,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59,130,246,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap {
+    position: relative;
+    z-index: 1;
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 40px 20px 100px;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 6px;
+  }
+  .logo {
+    width: 42px; height: 42px;
+    background: linear-gradient(135deg, var(--accent), var(--purple));
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+    box-shadow: 0 0 20px rgba(59,130,246,0.3);
+  }
+  h1 {
+    font-size: 26px;
+    font-weight: 800;
+    background: linear-gradient(90deg, #e2e8f0, #94a3b8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .version-badge {
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--accent-glow);
+    color: var(--accent);
+    border: 1px solid rgba(59,130,246,0.3);
+    padding: 2px 8px;
+    border-radius: 999px;
+    letter-spacing: 0.03em;
+  }
+  .sub {
+    color: var(--muted);
+    font-size: 14px;
+    margin-bottom: 28px;
+    padding-left: 54px;
+  }
+
+  /* ── Mode Switcher Tabs ── */
+  .mode-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    background: var(--panel);
+    padding: 6px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+  }
+  .mode-tab {
+    flex: 1;
+    text-align: center;
+    padding: 10px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+  }
+  .mode-tab:hover {
+    color: var(--text);
+    background: rgba(255,255,255,0.03);
+  }
+  .mode-tab.active {
+    color: #fff;
+    background: var(--panel2);
+    border: 1px solid var(--border-soft);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 16px;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: var(--border-soft); }
+
+  .card-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 16px;
+  }
+
+  /* ── Buttons ── */
+  button {
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 10px 18px;
+    transition: all 0.15s;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #2563eb);
+    color: white;
+    box-shadow: 0 0 16px rgba(59,130,246,0.25);
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 0 24px rgba(59,130,246,0.4); }
+  .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  .btn-ghost {
+    background: transparent;
+    border: 1px solid var(--border-soft);
+    color: var(--text);
+  }
+  .btn-ghost:hover { background: var(--panel2); }
+
+  .btn-sm { padding: 6px 12px; font-size: 13px; }
+
+  /* ── Form elements ── */
+  select, input[type="text"], input[type="number"], textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-family: inherit;
+    margin-top: 6px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  select:focus, input:focus, textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+  }
+  textarea { resize: vertical; min-height: 72px; }
+  label { font-size: 13px; color: var(--muted); display: block; margin-top: 16px; }
+  label:first-child { margin-top: 0; }
+
+  /* ── User row ── */
+  .user-row {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .user-row img {
+    width: 40px; height: 40px; border-radius: 50%;
+    border: 2px solid var(--border-soft);
+  }
+  .user-row .name { font-weight: 600; font-size: 15px; }
+  .user-row .login { color: var(--muted); font-size: 13px; }
+
+  /* ── Archetype Hero Card ── */
+  .archetype-card {
+    background: linear-gradient(135deg, rgba(139,92,246,0.12), rgba(59,130,246,0.08));
+    border: 1px solid rgba(139,92,246,0.3);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .archetype-title {
+    font-size: 22px;
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .archetype-badge {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    background: rgba(139,92,246,0.25);
+    color: #c4b5fd;
+    border: 1px solid rgba(139,92,246,0.4);
+    padding: 3px 10px;
+    border-radius: 999px;
+  }
+
+  /* ── Skills Grid ── */
+  .skills-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+    margin-top: 16px;
+  }
+  .skill-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    transition: transform 0.15s, border-color 0.15s;
+  }
+  .skill-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+  }
+  .skill-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .skill-name {
+    font-size: 16px;
+    font-weight: 700;
+    text-transform: capitalize;
+    color: #fff;
+  }
+  .skill-meter-bg {
+    width: 100%;
+    height: 6px;
+    background: var(--panel2);
+    border-radius: 999px;
+    overflow: hidden;
+    margin: 8px 0 12px;
+  }
+  .skill-meter-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent), var(--teal));
+  }
+
+  /* ── Stats grid ── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 16px;
+  }
+  @media (max-width: 520px) { .stats-grid { grid-template-columns: 1fr 1fr; } }
+  .stat {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+  }
+  .stat .n { font-size: 18px; font-weight: 700; }
+  .stat .l { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* ── Projects list ── */
+  .project-item {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+  .project-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .project-title { font-size: 15px; font-weight: 700; }
+
+  /* ── Confidence Pill ── */
+  .conf-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .conf-pill.High, .conf-pill.Medium-High {
+    background: var(--green-bg);
+    color: var(--green);
+    border: 1px solid rgba(16,185,129,0.25);
+  }
+  .conf-pill.Medium {
+    background: var(--yellow-bg);
+    color: var(--yellow);
+    border: 1px solid rgba(245,158,11,0.25);
+  }
+  .conf-pill.Low, .conf-pill.Insufficient {
+    background: var(--red-bg);
+    color: var(--red);
+    border: 1px solid rgba(239,68,68,0.25);
+  }
+
+  /* ── LLM insight panel ── */
+  .insight-box {
+    background: var(--purple-bg);
+    border: 1px solid rgba(139,92,246,0.25);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.7;
+    margin-top: 14px;
+  }
+  .ai-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 600;
+    color: var(--purple);
+    background: rgba(139,92,246,0.15);
+    border: 1px solid rgba(139,92,246,0.3);
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-bottom: 8px;
+  }
+
+  /* ── Misc ── */
+  .err {
+    color: var(--red);
+    font-size: 13px;
+    margin-top: 10px;
+    padding: 10px 14px;
+    background: var(--red-bg);
+    border: 1px solid rgba(239,68,68,0.2);
+    border-radius: var(--radius-sm);
+  }
+  .muted { color: var(--muted); font-size: 13px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .hidden { display: none !important; }
+
+  /* ── Loading spinner ── */
+  .loader {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 12px; padding: 16px 0;
+  }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loader-text { color: var(--muted); font-size: 13px; }
+
+  /* ── Status dot ── */
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .status-dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-dot.off { background: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">🔍</div>
+    <h1>GitProof Agent</h1>
+    <span class="version-badge">v2.5</span>
+  </div>
+  <div class="sub">
+    Autonomous GitHub Portfolio Intelligence & Multi-Skill Verification that learns from feedback.
+  </div>
+
+  <!-- Connect card -->
+  <div class="card" id="connectCard">
+    <div id="loggedOut">
+      <div class="card-title">GitHub Authentication</div>
+      <p class="muted" style="margin-bottom:16px;">Connect your GitHub account to enable GitProof to audit your repositories, commits, and verified skills.</p>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+        <button class="btn-primary" id="connectBtn">Connect GitHub</button>
+        <button class="btn-ghost" id="cliConnectBtn">⚡ Quick Connect via GitHub CLI</button>
+      </div>
+      <div class="err hidden" id="authError"></div>
+    </div>
+    <div id="loggedIn" class="hidden">
+      <div class="user-row">
+        <img id="avatar" src="" alt="avatar" />
+        <div>
+          <div class="name" id="userName"></div>
+          <div class="login" id="userLogin"></div>
+        </div>
+        <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+          <span id="statusDot" class="status-dot off" title="LLM status"></span>
+          <span id="statusLabel" class="muted" style="font-size:12px;"></span>
+          <button class="btn-ghost btn-sm" id="disconnectBtn">Disconnect</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mode Switcher -->
+  <div class="mode-tabs hidden" id="modeTabs">
+    <div class="mode-tab active" id="tabPortfolio" onclick="switchMode('portfolio')">
+      🚀 Full Portfolio Audit (All Repos)
+    </div>
+    <div class="mode-tab" id="tabSingle" onclick="switchMode('single')">
+      🎯 Single Repo Claim
+    </div>
+  </div>
+
+  <!-- ── MODE 1: Full Portfolio Audit ── -->
+  <div id="portfolioSection" class="hidden">
+    <div class="card">
+      <div class="card-title">Full GitHub Account Intelligence Audit</div>
+      <p class="muted" style="margin-bottom:16px;">
+        Scans all your accessible repositories in parallel, discovers every language & technology, and generates an AI-verified Developer Skill Matrix.
+      </p>
+      <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+        <button class="btn-primary" id="portfolioScanBtn" style="background: linear-gradient(135deg, #8b5cf6, #3b82f6);">
+          ✨ Audit Entire GitHub Profile
+        </button>
+        <label style="margin:0; display:flex; align-items:center; gap:6px;">
+          <span class="muted">Scan depth:</span>
+          <select id="repoLimitSelect" style="width:auto; margin:0; padding:6px 10px;">
+            <option value="15" selected>Top 15 active repos</option>
+            <option value="30">Top 30 repos</option>
+            <option value="50">All repos</option>
+          </select>
+        </label>
+      </div>
+      <div class="err hidden" id="portfolioError"></div>
+    </div>
+
+    <!-- Portfolio Loading -->
+    <div class="card hidden" id="portfolioLoadingCard">
+      <div class="loader">
+        <div class="spinner"></div>
+        <div class="loader-text" id="portfolioLoadingText">
+          Scanning repositories in parallel… discovering technologies and extracting skill evidence.
+        </div>
+      </div>
+    </div>
+
+    <!-- Portfolio Results Container -->
+    <div id="portfolioResultsContainer" class="hidden"></div>
+  </div>
+
+  <!-- ── MODE 2: Single Repo Claim ── -->
+  <div id="singleSection" class="hidden">
+    <div class="card">
+      <div class="card-title">Single Repository Claim Verification</div>
+      <label for="repoSelect">Select Repository</label>
+      <select id="repoSelect"></select>
+
+      <label for="skillInput">Claimed skill</label>
+      <input type="text" id="skillInput" placeholder="python" value="python" />
+
+      <div style="margin-top:20px; display:flex; align-items:center; gap:12px;">
+        <button class="btn-primary" id="analyzeBtn">Run GitProof Analysis</button>
+        <label style="margin:0; display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <input type="checkbox" id="cacheCheck" checked />
+          <span class="muted">Use cache (1 hr)</span>
+        </label>
+      </div>
+      <div class="err hidden" id="analyzeError"></div>
+    </div>
+
+    <!-- Loading -->
+    <div class="card hidden" id="loadingCard">
+      <div class="loader">
+        <div class="spinner"></div>
+        <div class="loader-text">Orchestrator running… fetching commits, scoring, and reasoning with AI.</div>
+      </div>
+    </div>
+
+    <!-- Single Result -->
+    <div class="card hidden" id="resultCard"></div>
+
+    <!-- Feedback -->
+    <div class="feedback-card hidden" id="feedbackCard">
+      <div class="card-title">Was this score accurate?</div>
+      <p class="muted">Your feedback teaches the agent to score better in future analyses.</p>
+
+      <div class="feedback-options" id="fbOptions">
+        <button class="fb-btn" data-type="correct">✅ Accurate</button>
+        <button class="fb-btn" data-type="too_high">⬆ Too High</button>
+        <button class="fb-btn" data-type="too_low">⬇ Too Low</button>
+        <button class="fb-btn" data-type="wrong">❌ Fundamentally Wrong</button>
+      </div>
+
+      <div id="fbDetails" class="hidden">
+        <label for="fbText" style="margin-top:16px;">Explain why (optional but helps the AI learn)</label>
+        <textarea id="fbText" placeholder="e.g. The person copy-pasted a boilerplate repo, they didn't write the code themselves."></textarea>
+
+        <label for="fbScore">What score would you give? (0–100, optional)</label>
+        <input type="number" id="fbScore" min="0" max="100" placeholder="e.g. 25" style="width:160px;" />
+
+        <div style="margin-top:16px;">
+          <button class="btn-primary" id="fbSubmitBtn">Submit Feedback</button>
+        </div>
+      </div>
+
+      <div id="fbResult" class="hidden"></div>
+      <div class="err hidden" id="fbError"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let currentAnalysisId = null;
+let selectedFeedbackType = null;
+let currentMode = 'portfolio';
+
+function switchMode(mode) {
+  currentMode = mode;
+  $('tabPortfolio').classList.toggle('active', mode === 'portfolio');
+  $('tabSingle').classList.toggle('active', mode === 'single');
+  $('portfolioSection').classList.toggle('hidden', mode !== 'portfolio');
+  $('singleSection').classList.toggle('hidden', mode !== 'single');
+}
+
+// ── API helper ────────────────────────────────────────────────────────────────
+async function api(path, opts = {}) {
+  const res = await fetch(path, { credentials: 'include', ...opts });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Request failed (${res.status})`);
+  }
+  return res.json();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('auth_error')) {
+    $('authError').textContent = 'GitHub connection failed: ' + params.get('auth_error');
+    $('authError').classList.remove('hidden');
+  }
+
+  try {
+    const user = await api('/api/me');
+    showLoggedIn(user);
+    loadRepos();
+    loadStatus();
+  } catch {
+    showLoggedOut();
+  }
+}
+
+async function loadStatus() {
+  try {
+    const s = await api('/api/status');
+    const dot = $('statusDot');
+    const label = $('statusLabel');
+    if (s.llm_available) {
+      dot.className = 'status-dot on';
+      dot.title = `LLM: ${s.llm_model}`;
+      label.textContent = `AI: ${s.llm_model}`;
+    } else {
+      dot.className = 'status-dot off';
+      dot.title = 'LLM not configured';
+      label.textContent = 'AI: offline';
+    }
+  } catch { /* non-critical */ }
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+function showLoggedOut() {
+  $('loggedOut').classList.remove('hidden');
+  $('loggedIn').classList.add('hidden');
+  $('modeTabs').classList.add('hidden');
+  $('portfolioSection').classList.add('hidden');
+  $('singleSection').classList.add('hidden');
+}
+
+function showLoggedIn(user) {
+  $('loggedOut').classList.add('hidden');
+  $('loggedIn').classList.remove('hidden');
+  $('modeTabs').classList.remove('hidden');
+  switchMode(currentMode);
+  $('avatar').src = user.avatar_url || '';
+  $('userName').textContent = user.name || user.login;
+  $('userLogin').textContent = '@' + user.login;
+}
+
+async function loadRepos() {
+  const sel = $('repoSelect');
+  sel.innerHTML = '<option>Loading repos…</option>';
+  try {
+    const repos = await api('/api/repos');
+    sel.innerHTML = '';
+    repos.forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r.full_name;
+      opt.textContent = `${r.full_name}${r.fork ? '  (fork)' : ''}${r.private ? '  🔒' : ''}`;
+      sel.appendChild(opt);
+    });
+  } catch {
+    sel.innerHTML = '<option>Could not load repos</option>';
+  }
+}
+
+$('connectBtn').addEventListener('click', () => { window.location.href = '/auth/login'; });
+
+$('cliConnectBtn').addEventListener('click', async () => {
+  $('authError').classList.add('hidden');
+  $('cliConnectBtn').disabled = true;
+  $('cliConnectBtn').textContent = 'Connecting...';
+  try {
+    const user = await api('/api/cli-login', { method: 'POST' });
+    showLoggedIn(user);
+    loadRepos();
+    loadStatus();
+  } catch (err) {
+    $('authError').textContent = err.message;
+    $('authError').classList.remove('hidden');
+  } finally {
+    $('cliConnectBtn').disabled = false;
+    $('cliConnectBtn').textContent = '⚡ Quick Connect via GitHub CLI';
+  }
+});
+
+$('disconnectBtn').addEventListener('click', async () => {
+  await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+  window.location.href = '/';
+});
+
+// ── Portfolio Scan ────────────────────────────────────────────────────────────
+$('portfolioScanBtn').addEventListener('click', async () => {
+  $('portfolioError').classList.add('hidden');
+  $('portfolioResultsContainer').classList.add('hidden');
+  $('portfolioLoadingCard').classList.remove('hidden');
+  $('portfolioScanBtn').disabled = true;
+
+  const limit = parseInt($('repoLimitSelect').value) || 15;
+
+  try {
+    const data = await api('/api/portfolio/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ limit_repos: limit }),
+    });
+    renderPortfolioResults(data);
+  } catch (e) {
+    $('portfolioError').textContent = e.message;
+    $('portfolioError').classList.remove('hidden');
+  } finally {
+    $('portfolioLoadingCard').classList.add('hidden');
+    $('portfolioScanBtn').disabled = false;
+  }
+});
+
+function renderPortfolioResults(data) {
+  const container = $('portfolioResultsContainer');
+  const ai = data.ai_synthesis || {};
+  const skills = data.skills || {};
+  const flagships = data.flagship_projects || [];
+
+  // 1. Archetype & Executive Summary
+  let archetypeHtml = '';
+  if (ai.archetype) {
+    archetypeHtml = `
+      <div class="archetype-card">
+        <div class="archetype-title">
+          <span>${escHtml(ai.archetype)}</span>
+          <span class="archetype-badge">Verified Archetype</span>
+        </div>
+        <p style="font-size:14px; line-height:1.7; color:var(--text);">${escHtml(ai.executive_summary || '')}</p>
+        ${ai.recommendation ? `<p class="muted" style="margin-top:12px; font-size:13px;">🎯 <strong>Best Fit:</strong> ${escHtml(ai.recommendation)}</p>` : ''}
+      </div>
+    `;
+  }
+
+  // 2. Verified Skills Grid
+  let skillsHtml = '';
+  const skillEntries = Object.entries(skills);
+  if (skillEntries.length) {
+    skillsHtml = `
+      <div class="card">
+        <div class="card-title">Verified Skill Matrix (${skillEntries.length} Technologies Detected)</div>
+        <div class="skills-grid">
+          ${skillEntries.map(([name, s]) => `
+            <div class="skill-card">
+              <div class="skill-head">
+                <span class="skill-name">${escHtml(name)}</span>
+                <span class="conf-pill ${s.confidence.replace(' ', '-')}">${s.score}/100</span>
+              </div>
+              <div class="skill-meter-bg">
+                <div class="skill-meter-fill" style="width: ${Math.max(8, s.score)}%;"></div>
+              </div>
+              <div style="font-size:12px; color:var(--muted); display:flex; justify-content:space-between; margin-bottom:8px;">
+                <span>${s.stats.total_commits} commits</span>
+                <span>${s.stats.repos_count} repos</span>
+              </div>
+              ${s.top_repositories && s.top_repositories.length ? `
+                <div style="font-size:11px; color:var(--muted); border-top:1px solid var(--border); padding-top:6px;">
+                  Top project: <a href="${s.top_repositories[0].url}" target="_blank">${escHtml(s.top_repositories[0].name)}</a>
+                </div>
+              ` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  // 3. Flagship Projects Showcase
+  let projectsHtml = '';
+  if (flagships.length) {
+    projectsHtml = `
+      <div class="card">
+        <div class="card-title">Flagship Repositories & Implementations</div>
+        ${flagships.slice(0, 5).map(p => `
+          <div class="project-item">
+            <div class="project-header">
+              <a href="${p.url}" target="_blank" class="project-title">${escHtml(p.name)}</a>
+              <span class="conf-pill Medium">${escHtml(p.language)}</span>
+            </div>
+            <p class="muted" style="font-size:13px; margin:4px 0 8px;">${escHtml(p.description)}</p>
+            <div style="font-size:11px; color:var(--muted); display:flex; gap:12px;">
+              <span>📝 ${p.user_commits} commits</span>
+              <span>⭐ ${p.stars} stars</span>
+              ${p.is_fork ? '<span>🔀 Fork</span>' : '<span>✨ Original build</span>'}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  container.innerHTML = `
+    ${archetypeHtml}
+    ${skillsHtml}
+    ${projectsHtml}
+    <div class="card" style="text-align:center; padding:16px;">
+      <p class="muted" style="font-size:12px;">
+        Scan completed in ${data.scan_duration_seconds}s across ${data.repos_scanned} active repositories.
+      </p>
+    </div>
+  `;
+  container.classList.remove('hidden');
+}
+
+// ── Single Analysis ───────────────────────────────────────────────────────────
+$('analyzeBtn').addEventListener('click', async () => {
+  const fullName = $('repoSelect').value;
+  const skill = $('skillInput').value.trim();
+  const useCache = $('cacheCheck').checked;
+
+  $('analyzeError').classList.add('hidden');
+  if (!fullName || !fullName.includes('/')) {
+    $('analyzeError').textContent = 'Pick a valid repository first.';
+    $('analyzeError').classList.remove('hidden');
+    return;
+  }
+  const [owner, repo] = fullName.split('/');
+
+  $('resultCard').classList.add('hidden');
+  $('feedbackCard').classList.add('hidden');
+  $('loadingCard').classList.remove('hidden');
+  $('analyzeBtn').disabled = true;
+  resetFeedback();
+
+  try {
+    const data = await api('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ owner, repo, claimed_skill: skill, use_cache: useCache }),
+    });
+    currentAnalysisId = data.analysis_id;
+    renderResult(data);
+    $('feedbackCard').classList.remove('hidden');
+  } catch (e) {
+    $('analyzeError').textContent = e.message;
+    $('analyzeError').classList.remove('hidden');
+  } finally {
+    $('loadingCard').classList.add('hidden');
+    $('analyzeBtn').disabled = false;
+  }
+});
+
+function renderResult(data) {
+  const { evidence, assessment, claim, user, from_cache } = data;
+  const c = evidence.contribution;
+  const a = assessment;
+
+  const warningsHtml = (a.warnings || []).length
+    ? (a.warnings || []).map(w =>
+        `<div class="err" style="margin-bottom:12px;"><span>⚠</span> <span>${escHtml(w)}</span></div>`
+      ).join('')
+    : '';
+
+  const evidenceHtml = (a.reasons || []).length
+    ? `<ul style="list-style:none; padding:0;">${(a.reasons||[]).map(r => `<li style="padding:4px 0;">✓ ${escHtml(r)}</li>`).join('')}</ul>`
+    : `<p class="muted">No meaningful evidence found for this claim in this repo.</p>`;
+
+  const insightHtml = a.llm_insight
+    ? `<div class="insight-box">
+         <div class="ai-badge">✨ Gemini Reasoning</div>
+         <div>${escHtml(a.llm_insight)}</div>
+       </div>`
+    : '';
+
+  $('resultCard').innerHTML = `
+    <div style="text-align:center; padding:16px 0;">
+      <div class="muted">${escHtml(user)} — <strong>${escHtml(claim)}</strong> in <a href="${evidence.repository.url}" target="_blank">${escHtml(evidence.repository.name)}</a></div>
+      <div style="font-size:44px; font-weight:800; margin:10px 0;">${a.evidence_score}<span style="font-size:16px; color:var(--muted);">/100</span></div>
+      <div class="conf-pill ${a.confidence.replace(' ', '-')}">${a.confidence} confidence</div>
+    </div>
+    ${warningsHtml}
+    <div class="stats-grid">
+      <div class="stat"><div class="n">${c.commits}</div><div class="l">Commits</div></div>
+      <div class="stat"><div class="n">${c.skill_files}</div><div class="l">${escHtml(claim)} files</div></div>
+      <div class="stat"><div class="n">${c.additions.toLocaleString()}</div><div class="l">Lines added</div></div>
+    </div>
+    <div style="margin-top:20px;">
+      <div class="card-title">Evidence</div>
+      ${evidenceHtml}
+    </div>
+    ${insightHtml}
+  `;
+  $('resultCard').classList.remove('hidden');
+}
+
+// ── Feedback ──────────────────────────────────────────────────────────────────
+function resetFeedback() {
+  selectedFeedbackType = null;
+  $('fbOptions').querySelectorAll('.fb-btn').forEach(b => b.classList.remove('selected', b.dataset.type));
+  $('fbDetails').classList.add('hidden');
+  $('fbResult').classList.add('hidden');
+  $('fbError').classList.add('hidden');
+  $('fbText').value = '';
+  $('fbScore').value = '';
+}
+
+$('fbOptions').addEventListener('click', (e) => {
+  const btn = e.target.closest('.fb-btn');
+  if (!btn) return;
+  $('fbOptions').querySelectorAll('.fb-btn').forEach(b => {
+    b.classList.remove('selected', 'correct', 'too_high', 'too_low', 'wrong');
+  });
+  btn.classList.add('selected', btn.dataset.type);
+  selectedFeedbackType = btn.dataset.type;
+
+  if (selectedFeedbackType === 'correct') {
+    submitFeedback();
+    $('fbDetails').classList.add('hidden');
+  } else {
+    $('fbDetails').classList.remove('hidden');
+  }
+});
+
+$('fbSubmitBtn').addEventListener('click', submitFeedback);
+
+async function submitFeedback() {
+  if (!currentAnalysisId || !selectedFeedbackType) return;
+
+  $('fbError').classList.add('hidden');
+  $('fbSubmitBtn') && ($('fbSubmitBtn').disabled = true);
+
+  const body = {
+    analysis_id: currentAnalysisId,
+    feedback_type: selectedFeedbackType,
+    feedback_text: $('fbText').value.trim() || null,
+    correct_score: $('fbScore').value ? parseInt($('fbScore').value) : null,
+  };
+
+  try {
+    const res = await api('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    renderFeedbackResult(res);
+  } catch (e) {
+    $('fbError').textContent = e.message;
+    $('fbError').classList.remove('hidden');
+  } finally {
+    $('fbSubmitBtn') && ($('fbSubmitBtn').disabled = false);
+  }
+}
+
+function renderFeedbackResult(res) {
+  $('fbDetails').classList.add('hidden');
+  const el = $('fbResult');
+
+  if (res.lesson_generated) {
+    el.innerHTML = `
+      <div style="background:var(--purple-bg); border:1px solid rgba(139,92,246,0.3); border-radius:8px; padding:16px; margin-top:16px;">
+        <div style="font-weight:600; color:var(--purple); margin-bottom:6px;">🧠 New Lesson Extracted</div>
+        <div>${escHtml(res.lesson_generated)}</div>
+      </div>
+    `;
+  } else {
+    el.innerHTML = `<p class="muted" style="margin-top:12px;">✓ ${escHtml(res.message)}</p>`;
+  }
+  el.classList.remove('hidden');
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, m => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[m]));
+}
+
+init();
+</script>
+</body>
+</html>
