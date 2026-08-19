@@ -54,9 +54,7 @@ class MemoryManager:
             self._persistent_conn = None
         self._init_db()
 
-    # ------------------------------------------------------------------
     # Internal helpers
-    # ------------------------------------------------------------------
 
     def _conn(self) -> sqlite3.Connection:
         if self._persistent_conn is not None:
@@ -116,9 +114,7 @@ class MemoryManager:
             self._close(conn)
         logger.info("Memory initialised at %s", self.db_path)
 
-    # ------------------------------------------------------------------
     # Analyses
-    # ------------------------------------------------------------------
 
     def store_analysis(
         self,

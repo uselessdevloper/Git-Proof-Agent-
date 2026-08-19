@@ -68,36 +68,57 @@ def _extract_json_object(raw_text: str) -> Optional[dict]:
 
 
 class LLMClient:
-    MODELS = ["gemini-flash-latest", "gemini-pro-latest", "gemini-2.5-flash"]
-    BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+    GEMINI_MODELS = ["gemini-flash-latest", "gemini-pro-latest", "gemini-2.5-flash"]
+    GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+
+    NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
+    NVIDIA_DEFAULT_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
 
     def __init__(self):
-        self.api_key = (
+        self.gemini_api_key = (
             os.getenv("GEMINI_API_KEY")
             or os.getenv("VITE_GEMINI_API_KEY")
             or os.getenv("GOOGLE_API_KEY")
         )
-        self.available = bool(self.api_key and not self.api_key.startswith("paste_"))
-        self.MODEL = self.MODELS[0]
+        self.nvidia_api_key = (
+            os.getenv("NVIDIA_API_KEY")
+            or os.getenv("NVAPI_KEY")
+        )
+        self.nvidia_base_url = os.getenv("NVIDIA_BASE_URL", self.NVIDIA_BASE_URL)
+        self.nvidia_model = os.getenv("NVIDIA_MODEL", self.NVIDIA_DEFAULT_MODEL)
+
+        self.gemini_available = bool(self.gemini_api_key and not self.gemini_api_key.startswith("paste_"))
+        self.nvidia_available = bool(self.nvidia_api_key and not self.nvidia_api_key.startswith("paste_"))
+        self.available = self.gemini_available or self.nvidia_available
+
+        # Backwards compatibility attributes
+        self.MODELS = self.GEMINI_MODELS
+        self.MODEL = self.GEMINI_MODELS[0] if self.gemini_available else (self.nvidia_model if self.nvidia_available else "none")
+        self.active_provider = "gemini" if self.gemini_available else ("nvidia" if self.nvidia_available else "none")
 
         if not self.available:
             logger.info(
-                "Gemini API key is not set — LLM features disabled. "
+                "Neither Gemini nor NVIDIA API key is configured — LLM features disabled. "
                 "Deterministic scoring still works."
             )
         else:
-            logger.info("LLM client ready using Google Cloud Gemini (default model: %s)", self.MODEL)
+            providers = []
+            if self.gemini_available:
+                providers.append(f"Gemini ({self.MODEL})")
+            if self.nvidia_available:
+                providers.append(f"NVIDIA Nemotron ({self.nvidia_model})")
+            logger.info("LLM client ready with provider(s): %s", ", ".join(providers))
 
     # ------------------------------------------------------------------
-    # Internal
+    # Internal Providers
     # ------------------------------------------------------------------
 
-    def _generate(self, prompt: str) -> Optional[str]:
-        if not self.available:
+    def _generate_gemini(self, prompt: str) -> Optional[str]:
+        if not self.gemini_available:
             return None
 
-        for model in self.MODELS:
-            url = f"{self.BASE_URL}/{model}:generateContent?key={self.api_key}"
+        for model in self.GEMINI_MODELS:
+            url = f"{self.GEMINI_BASE_URL}/{model}:generateContent?key={self.gemini_api_key}"
             payload = {
                 "contents": [
                     {
@@ -115,11 +136,65 @@ class LLMClient:
                         parts = candidates[0].get("content", {}).get("parts", [])
                         if parts:
                             self.MODEL = model
+                            self.active_provider = "gemini"
                             return parts[0].get("text", "")
                 else:
-                    logger.debug("Model %s returned HTTP %s: %s", model, resp.status_code, resp.text[:120])
+                    logger.debug("Gemini model %s returned HTTP %s: %s", model, resp.status_code, resp.text[:120])
             except Exception as exc:
-                logger.warning("LLM request failed for model %s: %s", model, exc)
+                logger.warning("Gemini request failed for model %s: %s", model, exc)
+
+        return None
+
+    def _generate_nvidia(self, prompt: str) -> Optional[str]:
+        if not self.nvidia_available:
+            return None
+
+        url = f"{self.nvidia_base_url.rstrip('/')}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.nvidia_api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self.nvidia_model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.6,
+            "top_p": 0.95,
+            "max_tokens": 4096,
+        }
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=25)
+            if resp.status_code == 200:
+                data = resp.json()
+                choices = data.get("choices", [])
+                if choices:
+                    content = choices[0].get("message", {}).get("content", "")
+                    if content:
+                        self.MODEL = self.nvidia_model
+                        self.active_provider = "nvidia"
+                        return content
+            else:
+                logger.warning("NVIDIA Nemotron model %s returned HTTP %s: %s", self.nvidia_model, resp.status_code, resp.text[:120])
+        except Exception as exc:
+            logger.warning("NVIDIA Nemotron request failed for model %s: %s", self.nvidia_model, exc)
+
+        return None
+
+    def _generate(self, prompt: str) -> Optional[str]:
+        if not self.available:
+            return None
+
+        # 1. Primary: Try Gemini if available
+        if self.gemini_available:
+            result = self._generate_gemini(prompt)
+            if result:
+                return result
+            logger.info("Gemini models failed or rate-limited. Falling back to NVIDIA Nemotron...")
+
+        # 2. Fallback: NVIDIA Nemotron
+        if self.nvidia_available:
+            result = self._generate_nvidia(prompt)
+            if result:
+                return result
 
         return None
 
