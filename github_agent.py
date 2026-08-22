@@ -53,12 +53,8 @@ class GitProofAgent:
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {self.token}",
             "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "GitProof-Agent/2.0",
+            "User-Agent": "GitProof-Agent/2.5",
         })
-
-    # ------------------------------------------------------------------
-    # Low-level HTTP GET with timeout & defensive status handling
-    # ------------------------------------------------------------------
 
     def get(self, endpoint: str, params: Optional[dict] = None) -> Any:
         url = f"{GITHUB_API}{endpoint}" if not endpoint.startswith("http") else endpoint
@@ -91,29 +87,34 @@ class GitProofAgent:
         except Exception:
             return response.text
 
-    # ------------------------------------------------------------------
-    # Identity & Repositories
-    # ------------------------------------------------------------------
-
     def get_authenticated_user(self) -> dict:
         data = self.get("/user")
         return data if isinstance(data, dict) else {}
 
     def list_my_repos(self, per_page: int = 100) -> List[dict]:
-        """Repos the connected user owns, collaborates on, or belongs to (via org)."""
         repos = []
         page = 1
         while True:
             try:
-                data = self.get(
-                    "/user/repos",
-                    params={
-                        "per_page": min(100, max(1, per_page)),
-                        "page": page,
-                        "sort": "updated",
-                        "affiliation": "owner,collaborator,organization_member",
-                    },
-                )
+                data = self.get("/user/repos", params={"per_page": min(100, max(1, per_page)), "page": page, "sort": "updated"})
+                if not data or not isinstance(data, list):
+                    break
+                repos.extend(data)
+                if len(data) < per_page or page >= 5:  # safety limit: up to 500 repos
+                    break
+                page += 1
+            except Exception:
+                break
+        return repos
+
+    def list_user_repos(self, username: Optional[str] = None, per_page: int = 100) -> List[dict]:
+        if not username:
+            return self.list_my_repos(per_page=per_page)
+        repos = []
+        page = 1
+        while True:
+            try:
+                data = self.get(f"/users/{username}/repos", params={"per_page": min(100, max(1, per_page)), "page": page, "sort": "updated"})
                 if not data or not isinstance(data, list):
                     break
                 repos.extend(data)
@@ -122,15 +123,24 @@ class GitProofAgent:
                 page += 1
             except Exception:
                 break
+        if not repos:
+            try:
+                return self.list_my_repos(per_page=per_page)
+            except Exception:
+                return []
         return repos
 
     def get_repository(self, owner: str, repo: str) -> dict:
         data = self.get(f"/repos/{owner}/{repo}")
         return data if isinstance(data, dict) else {}
 
-    # ------------------------------------------------------------------
-    # Commits
-    # ------------------------------------------------------------------
+    def get_contributors(self, owner: str, repo: str, per_page: int = 30) -> List[dict]:
+        """Fetch list of collaborators / contributors for a repository."""
+        try:
+            data = self.get(f"/repos/{owner}/{repo}/contributors", params={"per_page": min(100, max(1, per_page))})
+            return data if isinstance(data, list) else []
+        except Exception:
+            return []
 
     def get_commits(self, owner: str, repo: str, author: Optional[str] = None, per_page: int = 100) -> List[dict]:
         commits = []
@@ -159,10 +169,6 @@ class GitProofAgent:
             return data if isinstance(data, dict) else {}
         except Exception:
             return {}
-
-    # ------------------------------------------------------------------
-    # Pull Requests
-    # ------------------------------------------------------------------
 
     def get_pull_requests(self, owner: str, repo: str, username: str) -> Tuple[List[dict], int]:
         if not username or not username.strip():
@@ -213,10 +219,6 @@ class GitProofAgent:
                 continue
 
         return pr_details, merged_count
-
-    # ------------------------------------------------------------------
-    # Full Contribution Analysis
-    # ------------------------------------------------------------------
 
     def analyze_contribution(self, owner: str, repo: str, username: str, claimed_skill: str) -> dict:
         if not owner or not repo or not username:

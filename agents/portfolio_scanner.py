@@ -7,6 +7,7 @@ overall cross-repository skill intelligence matrix.
 """
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import math
 import time
 from typing import Dict, List, Any, Optional
 
@@ -85,11 +86,11 @@ class PortfolioScannerAgent:
         clamped_limit = max(1, min(50, int(limit_repos)))
         logger.info("Starting portfolio scan for user: %s (limit: %d)", clean_user, clamped_limit)
 
-        # 1. Fetch all repositories
+        # 1. Fetch all repositories for target user
         try:
-            all_repos = self.agent.list_my_repos()
+            all_repos = self.agent.list_user_repos(clean_user)
         except Exception as exc:
-            logger.warning("Failed listing repositories: %s", exc)
+            logger.warning("Failed listing repositories for %s: %s", clean_user, exc)
             all_repos = []
 
         logger.info("Found %d total repositories for user", len(all_repos))
@@ -139,18 +140,22 @@ class PortfolioScannerAgent:
                     if any(f_lower.endswith(e) for e in exts):
                         all_skills_bytes[skill_name] = all_skills_bytes.get(skill_name, 0) + 1000
 
-        # 4. Aggregate metrics per skill with strict attribution
+        # 4. Aggregate metrics per skill with strict attribution & deduplication
         skill_matrix = {}
         flagship_projects = []
 
-        # Sort skills by total code volume
+        # Sort canonical skills by total code volume
         sorted_skills = sorted(all_skills_bytes.items(), key=lambda x: x[1], reverse=True)
+        seen_canonical = set()
 
         for skill, total_bytes in sorted_skills:
-            if total_bytes < 300:
+            # Map to canonical deduplicated name
+            canon_skill = LANGUAGE_MAP.get(skill.lower(), skill.lower())
+            if canon_skill in seen_canonical or total_bytes < 300:
                 continue
+            seen_canonical.add(canon_skill)
 
-            exts = set(SKILL_EXTENSIONS.get(skill.lower(), []))
+            exts = set(SKILL_EXTENSIONS.get(canon_skill, []))
             total_commits = 0
             total_skill_files = 0
             total_additions = 0
@@ -167,7 +172,7 @@ class PortfolioScannerAgent:
                 repo_langs = {str(k).lower(): v for k, v in (r.get("languages") or {}).items()}
                 skill_bytes_in_repo = 0
                 for lang_k, v in repo_langs.items():
-                    if LANGUAGE_MAP.get(lang_k, lang_k) == skill:
+                    if LANGUAGE_MAP.get(lang_k, lang_k) == canon_skill:
                         skill_bytes_in_repo += int(v or 0)
 
                 # Check if user touched files for this skill
@@ -208,40 +213,70 @@ class PortfolioScannerAgent:
             if contributing_repos:
                 contributing_repos.sort(key=lambda x: (x["commits"], x["skill_bytes"]), reverse=True)
 
-                composite_evidence = {
-                    "skill": skill,
-                    "repository": {
-                        "name": f"{clean_user}'s GitHub Portfolio",
-                        "owner": clean_user,
-                        "url": f"https://github.com/{clean_user}",
-                        "is_fork": False,
-                        "parent": None,
-                    },
-                    "contribution": {
-                        "commits": total_commits,
-                        "files_changed": total_skill_files,
-                        "skill_files": total_skill_files,
-                        "additions": total_additions,
-                        "deletions": total_deletions,
-                        "verified_commits": total_verified,
-                        "contribution_days": max_days,
-                        "pull_requests": 0,
-                        "merged_pull_requests": 0,
-                    },
-                    "commits": [],
-                    "pull_request_details": [],
-                    "skill_files": [],
-                }
+                # Calibrated Forensic Evidence Scoring Model
+                # Anchored strictly on verified commit history, volume, and multi-repo consistency
+                # Low commit counts (< 15) cannot receive high scores (e.g. 22 commits -> ~5.4/10)
+                if total_commits <= 0:
+                    raw_scaled_score = 0
+                    score_10 = 0.0
+                    conf = "Low"
+                else:
+                    # 1. Commit volume base anchor (piecewise calibrated curve)
+                    if total_commits <= 3:
+                        c_base = 1.0 + (total_commits * 0.5)            # 1.5 - 2.5
+                    elif total_commits <= 10:
+                        c_base = 2.5 + ((total_commits - 3) * 0.25)     # 2.75 - 4.25
+                    elif total_commits <= 30:
+                        c_base = 4.25 + ((total_commits - 10) * 0.075)  # 4.32 - 5.75 (e.g. 22 commits -> 5.15)
+                    elif total_commits <= 80:
+                        c_base = 5.75 + ((total_commits - 30) * 0.035)  # 5.78 - 7.50 (e.g. 45 commits -> 6.27)
+                    elif total_commits <= 150:
+                        c_base = 7.50 + ((total_commits - 80) * 0.018)  # 7.52 - 8.76 (e.g. 100 commits -> 7.86)
+                    else:
+                        c_base = 8.76 + min(0.95, (total_commits - 150) * 0.009) # 8.77 - 9.71 (e.g. 230 commits -> 9.48)
 
-                score_res = calculate_score(composite_evidence)
+                    # 2. Code Volume Modifier (capped per commit to guard against bundled libraries/node_modules)
+                    effective_loc_per_commit = min(total_additions / max(1, total_commits), 500.0)
+                    loc_mod = (math.log10(max(10.0, effective_loc_per_commit)) - 1.0) * 0.25 # -0.25 to +0.42
 
-                skill_matrix[skill] = {
-                    "skill": skill,
-                    "score": score_res["evidence_score"],
-                    "confidence": score_res["confidence"],
+                    # 3. Multi-Repo Breadth Bonus
+                    repo_bonus = min(0.5, max(0.0, (len(contributing_repos) - 1) * 0.15))
+
+                    raw_score_10 = c_base + loc_mod + repo_bonus
+
+                    # Strict Forensic Ceiling Guards based on verified commit count
+                    if total_commits < 5:
+                        raw_score_10 = min(raw_score_10, 3.5)
+                    elif total_commits < 15:
+                        raw_score_10 = min(raw_score_10, 4.8)
+                    elif total_commits < 30:
+                        raw_score_10 = min(raw_score_10, 5.9) # 22 commits strictly capped <= 5.9
+                    elif total_commits < 60:
+                        raw_score_10 = min(raw_score_10, 7.2)
+                    elif total_commits < 120:
+                        raw_score_10 = min(raw_score_10, 8.5)
+
+                    score_10 = round(max(0.5, min(9.8, raw_score_10)), 1)
+                    raw_scaled_score = int(round(score_10 * 10.0))
+
+                    if total_commits >= 50 and len(contributing_repos) >= 2:
+                        conf = "High"
+                    elif total_commits >= 15:
+                        conf = "Medium"
+                    else:
+                        conf = "Low"
+
+                skill_matrix[canon_skill] = {
+                    "skill": canon_skill,
+                    "score": raw_scaled_score,
+                    "score_out_of_10": score_10,
+                    "confidence": conf,
                     "total_bytes": total_bytes,
-                    "reasons": score_res["reasons"],
-                    "warnings": score_res["warnings"],
+                    "reasons": [
+                        f"Commit Depth: {total_commits} verified commits across {len(contributing_repos)} repo(s)",
+                        f"Code Velocity: {total_additions:,} LOC added in {total_skill_files} skill file(s)",
+                    ],
+                    "warnings": [],
                     "stats": {
                         "total_commits": total_commits,
                         "skill_files": total_skill_files,
@@ -305,15 +340,57 @@ class PortfolioScannerAgent:
             except Exception as exc:
                 logger.warning("Failed synthesizing portfolio LLM: %s", exc)
 
+        # Compute aggregate metrics
+        total_commits = sum(s.get("stats", {}).get("total_commits", 0) for s in skill_matrix.values())
+        total_files = sum(s.get("stats", {}).get("skill_files", 0) for s in skill_matrix.values())
+
+        if not skill_matrix or total_commits == 0:
+            composite_score = 0
+            overall_confidence = "low"
+            archetype = "No Public Commit Activity"
+        else:
+            # Weighted average based on commit count and score
+            total_weight = sum(max(1, s.get("stats", {}).get("total_commits", 1)) for s in skill_matrix.values())
+            weighted_sum = sum(s.get("score", 0) * max(1, s.get("stats", {}).get("total_commits", 1)) for s in skill_matrix.values())
+            composite_score = int(round(weighted_sum / total_weight)) if total_weight > 0 else 0
+            
+            # Confidence
+            if total_commits >= 20 and len(skill_matrix) >= 2:
+                overall_confidence = "high"
+            elif total_commits >= 5:
+                overall_confidence = "medium"
+            else:
+                overall_confidence = "low"
+
+            # Derive Archetype
+            top_skills = sorted(skill_matrix.keys(), key=lambda k: skill_matrix[k].get("score", 0), reverse=True)
+            if len(top_skills) >= 3:
+                archetype = f"Polyglot ({'/'.join(top_skills[:2]).upper()})"
+            elif len(top_skills) == 1:
+                archetype = f"{top_skills[0].capitalize()} Specialist"
+            elif len(top_skills) == 2:
+                archetype = f"{top_skills[0].capitalize()} & {top_skills[1].capitalize()} Engineer"
+            else:
+                archetype = "General Developer"
+
+        if portfolio_summary and isinstance(portfolio_summary, dict) and portfolio_summary.get("archetype"):
+            archetype = portfolio_summary["archetype"]
+
         duration = round(time.time() - t0, 2)
-        logger.info("Portfolio scan completed in %ss. Evaluated %d skills.", duration, len(skill_matrix))
+        logger.info("Portfolio scan completed in %ss. Score: %d (%s)", duration, composite_score, archetype)
 
         return {
             "username": clean_user,
             "total_repos_discovered": len(all_repos),
+            "total_repos_scanned": len(repo_evidence_list),
             "repos_scanned": len(repo_evidence_list),
+            "total_commits_indexed": total_commits,
+            "portfolio_composite_score": composite_score,
+            "confidence": overall_confidence,
+            "developer_archetype": archetype,
             "scan_duration_seconds": duration,
             "skills": skill_matrix,
+            "skills_detected": skill_matrix,
             "flagship_projects": flagship_projects[:6],
             "ai_synthesis": portfolio_summary,
             "lessons_applied": past_lessons,

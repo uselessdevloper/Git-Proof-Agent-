@@ -71,7 +71,7 @@ Theoretical max: 30+25+15+20+10+5 = 105 → clamped to 100.
 
 import math
 
-# ─── Physical constants (tuning knobs) ────────────────────────────────────────
+# Physical constants (tuning knobs)
 _ALPHA         = 0.60    # Pareto / Zipf exponent for file-count mass
 _A_FILES       = 12.0    # scale for file mass component
 _B_VOLUME      = 10.0    # scale for volume mass component
