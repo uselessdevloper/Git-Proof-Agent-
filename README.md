@@ -53,6 +53,11 @@ GEMINI_API_KEY="your_gemini_api_key_here"
 # Fallback: OpenRouter API Key (Optional)
 OPENROUTER_API_KEY="your_openrouter_api_key_here"
 
+# Fallback: NVIDIA NIM API Key (Optional: nvidia/nemotron-3.5-lightning-30b-a3b)
+NVIDIA_API_KEY="your_nvidia_api_key_here"
+NVIDIA_BASE_URL="https://integrate.api.nvidia.com/v1"
+NVIDIA_MODEL="nvidia/nemotron-3.5-lightning-30b-a3b"
+
 # GitHub Token (Optional: overrides local gh CLI auth)
 GITHUB_TOKEN="your_github_personal_access_token_here"
 ```
@@ -207,7 +212,7 @@ graph TD
 | **LangGraph Orchestrator** | [`agents/graph_orchestrator.py`](file:///Users/utkarshsinha/Downloads/gitproof/agents/graph_orchestrator.py) | Executes a 6-node cyclic LangGraph state machine with validation, evaluation, and feedback loops. |
 | **GitHub Data Agent** | [`github_agent.py`](file:///Users/utkarshsinha/Downloads/gitproof/github_agent.py) | Interfaces with GitHub REST API to extract raw commits, file modifications, GPG verification, and contributors. |
 | **Vector RAG Engine** | [`rag/rag_engine.py`](file:///Users/utkarshsinha/Downloads/gitproof/rag/rag_engine.py) | Implements cosine vector similarity search across developer skill taxonomies and learned feedback lessons. |
-| **Multi-Provider LLM** | [`llm/llm_client.py`](file:///Users/utkarshsinha/Downloads/gitproof/llm/llm_client.py) | Dispatches reasoning requests across Google Gemini, OpenRouter, and NVIDIA Nemotron with automatic failover. |
+| **Multi-Provider LLM** | [`llm/llm_client.py`](file:///Users/utkarshsinha/Downloads/gitproof/llm/llm_client.py) | Dispatches reasoning requests across Google Gemini, OpenRouter, and NVIDIA Nemotron (`nvidia/nemotron-3.5-lightning-30b-a3b`) with automatic failover. |
 | **Episodic Memory** | [`memory/memory_manager.py`](file:///Users/utkarshsinha/Downloads/gitproof/memory/memory_manager.py) | Persists analysis caches, vector embeddings, and self-improving heuristic corrections in SQLite. |
 | **Full-Screen UI** | [`static/index.html`](file:///Users/utkarshsinha/Downloads/gitproof/static/index.html) | Retro full-screen CRT console with 2-option landing, collaborator modal, live meter bars, and typewriter RAG chat. |
 

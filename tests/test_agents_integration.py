@@ -15,10 +15,7 @@ def client():
     return TestClient(app)
 
 
-# ==============================================================================
 # 1. ORCHESTRATOR & LEARNING LOOP E2E TESTS
-# ==============================================================================
-
 class TestOrchestratorIntegration:
     """Tests the full orchestrator pipeline and feedback learning loop end-to-end."""
 
