@@ -19,6 +19,7 @@ from github_agent import GitProofAgent
 from scoring import calculate_score
 from memory.memory_manager import MemoryManager
 from llm.llm_client import LLMClient
+from rag.rag_engine import RAGKnowledgeEngine
 from observability.logger import get_logger
 
 logger = get_logger(__name__)
@@ -26,10 +27,10 @@ logger = get_logger(__name__)
 
 class OrchestratorAgent:
     """
-    Coordinates the full GitProof pipeline with memory and LLM reasoning.
+    Coordinates the full GitProof pipeline with memory, RAG, and LLM reasoning.
 
-    One instance per request (since github_token is per-user), but memory
-    and llm are shared singletons passed in from app startup.
+    One instance per request (since github_token is per-user), but memory,
+    llm, and rag_engine are shared singletons passed in from app startup.
     """
 
     def __init__(
@@ -37,14 +38,12 @@ class OrchestratorAgent:
         github_token: str,
         memory: MemoryManager,
         llm: LLMClient,
+        rag_engine: Optional[RAGKnowledgeEngine] = None,
     ):
         self.github = GitProofAgent(github_token)
         self.memory = memory
         self.llm = llm
-
-    # ------------------------------------------------------------------
-    # Main entry point
-    # ------------------------------------------------------------------
+        self.rag_engine = rag_engine or RAGKnowledgeEngine()
 
     def run(
         self,
@@ -113,6 +112,15 @@ class OrchestratorAgent:
             except Exception as exc:
                 logger.warning("Fork lessons retrieval failed: %s", exc)
 
+        # Ingest lessons and evidence into RAG engine
+        try:
+            self.rag_engine.ingest_lessons(self.memory.get_all_lessons())
+            self.rag_engine.ingest_github_evidence(clean_owner, clean_repo, evidence)
+            rag_docs = self.rag_engine.query(f"{clean_skill} {clean_repo}", top_k=3)
+        except Exception as exc:
+            logger.warning("RAG indexing/retrieval failed: %s", exc)
+            rag_docs = []
+
         # ── 4. Deterministic scoring ──────────────────────────────────────────
         logger.info("Running deterministic scoring…")
         assessment = calculate_score(evidence)
@@ -125,7 +133,7 @@ class OrchestratorAgent:
         llm_insight: Optional[str] = None
         if self.llm and self.llm.available:
             try:
-                logger.info("Running LLM analysis (lessons=%d)…", len(lessons))
+                logger.info("Running LLM analysis (lessons=%d, rag=%d)…", len(lessons), len(rag_docs))
                 llm_insight = self.llm.qualitative_analyze(evidence, lessons)
             except Exception as exc:
                 logger.warning("LLM qualitative analysis failed: %s", exc)
@@ -160,12 +168,9 @@ class OrchestratorAgent:
                 "llm_insight": llm_insight,
                 "lessons_applied": lessons,
             },
+            "rag_docs": rag_docs,
             "from_cache": False,
         }
-
-    # ------------------------------------------------------------------
-    # Feedback + learning
-    # ------------------------------------------------------------------
 
     def process_feedback(
         self,
@@ -238,10 +243,6 @@ class OrchestratorAgent:
                 else "Feedback recorded."
             ),
         }
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
 
     def _wrap_cached(self, cached: dict) -> dict:
         """Re-format a cached analysis row into the standard response shape."""

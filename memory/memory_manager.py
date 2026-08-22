@@ -201,10 +201,6 @@ class MemoryManager:
         logger.info("Cache hit: analysis %s", d["id"])
         return d
 
-    # ------------------------------------------------------------------
-    # Feedback
-    # ------------------------------------------------------------------
-
     def store_feedback(
         self,
         analysis_id: str,
@@ -241,10 +237,6 @@ class MemoryManager:
             feedback_id, analysis_id, feedback_type,
         )
         return feedback_id
-
-    # ------------------------------------------------------------------
-    # Lessons
-    # ------------------------------------------------------------------
 
     def store_lesson(
         self,
