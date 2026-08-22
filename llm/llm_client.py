@@ -17,6 +17,9 @@ import os
 import re
 from typing import Optional, Tuple, List, Dict, Any
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from observability.logger import get_logger
 
@@ -68,8 +71,16 @@ def _extract_json_object(raw_text: str) -> Optional[dict]:
 
 
 class LLMClient:
-    GEMINI_MODELS = ["gemini-flash-latest", "gemini-pro-latest", "gemini-2.5-flash"]
+    GEMINI_MODELS = ["gemini-flash-latest", "gemini-pro-latest", "gemini-2.5-flash", "gemini-2.0-flash"]
     GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+
+    OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+    OPENROUTER_MODELS = [
+        "google/gemini-2.0-flash-001",
+        "openai/gpt-4o-mini",
+        "anthropic/claude-3.5-haiku",
+        "meta-llama/llama-3.3-70b-instruct",
+    ]
 
     NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
     NVIDIA_DEFAULT_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
@@ -80,6 +91,7 @@ class LLMClient:
             or os.getenv("VITE_GEMINI_API_KEY")
             or os.getenv("GOOGLE_API_KEY")
         )
+        self.openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
         self.nvidia_api_key = (
             os.getenv("NVIDIA_API_KEY")
             or os.getenv("NVAPI_KEY")
@@ -88,30 +100,38 @@ class LLMClient:
         self.nvidia_model = os.getenv("NVIDIA_MODEL", self.NVIDIA_DEFAULT_MODEL)
 
         self.gemini_available = bool(self.gemini_api_key and not self.gemini_api_key.startswith("paste_"))
+        self.openrouter_available = bool(self.openrouter_api_key and not self.openrouter_api_key.startswith("paste_"))
         self.nvidia_available = bool(self.nvidia_api_key and not self.nvidia_api_key.startswith("paste_"))
-        self.available = self.gemini_available or self.nvidia_available
+        self.available = self.gemini_available or self.openrouter_available or self.nvidia_available
 
         # Backwards compatibility attributes
         self.MODELS = self.GEMINI_MODELS
-        self.MODEL = self.GEMINI_MODELS[0] if self.gemini_available else (self.nvidia_model if self.nvidia_available else "none")
-        self.active_provider = "gemini" if self.gemini_available else ("nvidia" if self.nvidia_available else "none")
+        if self.gemini_available:
+            self.MODEL = self.GEMINI_MODELS[0]
+            self.active_provider = "gemini"
+        elif self.openrouter_available:
+            self.MODEL = self.OPENROUTER_MODELS[0]
+            self.active_provider = "openrouter"
+        elif self.nvidia_available:
+            self.MODEL = self.nvidia_model
+            self.active_provider = "nvidia"
+        else:
+            self.MODEL = "none"
+            self.active_provider = "none"
 
         if not self.available:
             logger.info(
-                "Neither Gemini nor NVIDIA API key is configured — LLM features disabled. "
-                "Deterministic scoring still works."
+                "No LLM API keys configured — deterministic scoring still works."
             )
         else:
             providers = []
             if self.gemini_available:
-                providers.append(f"Gemini ({self.MODEL})")
+                providers.append(f"Gemini ({self.GEMINI_MODELS[0]})")
+            if self.openrouter_available:
+                providers.append(f"OpenRouter ({self.OPENROUTER_MODELS[0]})")
             if self.nvidia_available:
                 providers.append(f"NVIDIA Nemotron ({self.nvidia_model})")
             logger.info("LLM client ready with provider(s): %s", ", ".join(providers))
-
-    # ------------------------------------------------------------------
-    # Internal Providers
-    # ------------------------------------------------------------------
 
     def _generate_gemini(self, prompt: str) -> Optional[str]:
         if not self.gemini_available:
@@ -145,6 +165,42 @@ class LLMClient:
 
         return None
 
+    def _generate_openrouter(self, prompt: str) -> Optional[str]:
+        if not self.openrouter_available:
+            return None
+
+        for model in self.OPENROUTER_MODELS:
+            url = f"{self.OPENROUTER_BASE_URL}/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {self.openrouter_api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://gitproof.agent",
+                "X-Title": "GitProof Agent",
+            }
+            payload = {
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.6,
+                "max_tokens": 4096,
+            }
+            try:
+                resp = requests.post(url, headers=headers, json=payload, timeout=25)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    choices = data.get("choices", [])
+                    if choices:
+                        content = choices[0].get("message", {}).get("content", "")
+                        if content:
+                            self.MODEL = model
+                            self.active_provider = "openrouter"
+                            return content
+                else:
+                    logger.debug("OpenRouter model %s returned HTTP %s", model, resp.status_code)
+            except Exception as exc:
+                logger.warning("OpenRouter request failed for model %s: %s", model, exc)
+
+        return None
+
     def _generate_nvidia(self, prompt: str) -> Optional[str]:
         if not self.nvidia_available:
             return None
@@ -173,7 +229,7 @@ class LLMClient:
                         self.active_provider = "nvidia"
                         return content
             else:
-                logger.warning("NVIDIA Nemotron model %s returned HTTP %s: %s", self.nvidia_model, resp.status_code, resp.text[:120])
+                logger.warning("NVIDIA Nemotron model %s returned HTTP %s", self.nvidia_model, resp.status_code)
         except Exception as exc:
             logger.warning("NVIDIA Nemotron request failed for model %s: %s", self.nvidia_model, exc)
 
@@ -183,24 +239,27 @@ class LLMClient:
         if not self.available:
             return None
 
-        # 1. Primary: Try Gemini if available
+        # 1. Primary: Try Gemini with provided key
         if self.gemini_available:
             result = self._generate_gemini(prompt)
             if result:
                 return result
-            logger.info("Gemini models failed or rate-limited. Falling back to NVIDIA Nemotron...")
+            logger.info("Gemini primary failed. Falling back to OpenRouter...")
 
-        # 2. Fallback: NVIDIA Nemotron
+        # 2. Fallback 1: OpenRouter
+        if self.openrouter_available:
+            result = self._generate_openrouter(prompt)
+            if result:
+                return result
+            logger.info("OpenRouter fallback failed. Falling back to NVIDIA...")
+
+        # 3. Fallback 2: NVIDIA Nemotron
         if self.nvidia_available:
             result = self._generate_nvidia(prompt)
             if result:
                 return result
 
         return None
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def qualitative_analyze(
         self,

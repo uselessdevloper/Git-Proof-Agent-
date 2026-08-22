@@ -6,3 +6,5 @@ itsdangerous
 pydantic
 tenacity
 google-genai
+langgraph
+langchain-core
